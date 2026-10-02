@@ -9,14 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * FileManager = จัดการอ่าน/เขียนไฟล์ทั้งหมด
- *   data.txt        = รายการรายรับ-รายจ่าย
- *   budget.txt      = งบรวมต่อเดือน
- *   budgets.txt     = งบแยกตามหมวดหมู่
- *   recurring.txt   = รายการประจำ
- *   settings.txt    = การตั้งค่า (ธีม)
- */
 public class Filemanager {
     private static final Path DATA_FILE      = Paths.get("data.txt");
     private static final Path BUDGET_FILE    = Paths.get("budget.txt");
@@ -24,7 +16,7 @@ public class Filemanager {
     private static final Path RECURRING_FILE = Paths.get("recurring.txt");
     private static final Path SETTINGS_FILE  = Paths.get("settings.txt");
 
-    // ---------- รายการ ----------
+    
     public static List<Transaction> load() {
         List<Transaction> list = new ArrayList<>();
         for (String line : readLines(DATA_FILE)) {
@@ -40,7 +32,7 @@ public class Filemanager {
         writeLines(DATA_FILE, lines);
     }
 
-    // ---------- งบรวม ----------
+  
     public static double loadBudget() {
         try {
             if (Files.exists(BUDGET_FILE)) {
@@ -58,7 +50,7 @@ public class Filemanager {
         }
     }
 
-    // ---------- งบแยกหมวด (รูปแบบบรรทัด: หมวด|จำนวน) ----------
+   
     public static Map<String, Double> loadCategoryBudgets() {
         Map<String, Double> map = new LinkedHashMap<>();
         for (String line : readLines(CAT_BUDGETS)) {
@@ -93,7 +85,7 @@ public class Filemanager {
         writeLines(RECURRING_FILE, lines);
     }
 
-    // ---------- ธีม ----------
+
     public static boolean loadDarkMode() {
         try {
             if (Files.exists(SETTINGS_FILE)) {
@@ -111,7 +103,7 @@ public class Filemanager {
         }
     }
 
-    // ---------- ส่งออก CSV ----------
+
     public static boolean exportCsv(List<Transaction> list, File file) {
         StringBuilder sb = new StringBuilder("\uFEFF");   // BOM ให้ Excel รู้ว่าเป็น UTF-8
         sb.append("วันที่,ประเภท,หมวดหมู่,ชื่อรายการ,จำนวนเงิน\n");
@@ -130,17 +122,13 @@ public class Filemanager {
         }
     }
 
-    // ---------- นำเข้า CSV ----------
-    /** ผลลัพธ์การนำเข้า: รายการที่อ่านได้ + จำนวนบรรทัดที่อ่านไม่ได้ */
+
     public static class ImportResult {
         public final List<Transaction> items = new ArrayList<>();
         public int invalid = 0;
     }
 
-    /**
-     * อ่านไฟล์ CSV รูปแบบ: วันที่,ประเภท,หมวดหมู่,ชื่อรายการ,จำนวนเงิน
-     * (รองรับ 4 คอลัมน์ที่ไม่มีหมวดหมู่, วันที่แบบ 2026-10-02 หรือ 2/10/2026 รวมถึงปี พ.ศ.)
-     */
+
     public static ImportResult importCsv(File file) throws IOException {
         ImportResult result = new ImportResult();
         List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
@@ -150,7 +138,7 @@ public class Filemanager {
             if (line.trim().isEmpty()) continue;
             List<String> cols = parseCsvLine(line);
 
-            // บรรทัดแรกที่คอลัมน์แรกไม่ใช่วันที่ = หัวตาราง ข้ามไป
+           
             if (firstLine) {
                 firstLine = false;
                 if (parseDate(cols.get(0)) == null) continue;
@@ -205,7 +193,7 @@ public class Filemanager {
         }
     }
 
-    /** แยกบรรทัด CSV โดยรองรับข้อความในเครื่องหมายคำพูดที่มีคอมม่า */
+  
     static List<String> parseCsvLine(String line) {
         List<String> out = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
@@ -228,7 +216,7 @@ public class Filemanager {
         return out;
     }
 
-    // ---------- ตัวช่วย ----------
+
     private static List<String> readLines(Path path) {
         try {
             if (Files.exists(path)) return Files.readAllLines(path, StandardCharsets.UTF_8);
