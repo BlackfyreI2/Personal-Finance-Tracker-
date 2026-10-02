@@ -7,11 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Charts = กราฟที่วาดเอง (ไม่ต้องใช้ไลบรารีเพิ่ม)
- *   Charts.PieChart = กราฟวงกลม
- *   Charts.BarChart = กราฟแท่ง
- */
+
 public class Charts {
     private static final Color[] PALETTE = {
             new Color(231, 76, 60), new Color(52, 152, 219), new Color(46, 204, 113),
@@ -20,7 +16,7 @@ public class Charts {
     };
     private static final DecimalFormat MONEY = new DecimalFormat("#,##0");
 
-    /** โหมดมืดหรือไม่ (Main เป็นคนตั้งค่า) กราฟจะเปลี่ยนสีข้อความ/เส้นตามนี้ */
+  
     public static boolean dark = false;
     private static Color textColor()  { return dark ? new Color(220, 220, 220) : new Color(60, 60, 60); }
     private static Color mutedColor() { return dark ? new Color(160, 160, 160) : Color.GRAY; }
@@ -65,7 +61,7 @@ public class Charts {
             return new Color(231, 76, 60);  // สีแดง (เกินงบ หรือใกล้เกินงบมาก)
         }
     }
-    // ===================== กราฟวงกลม =====================
+  
     public static class PieChart extends JPanel {
         private Map<String, Double> data = new LinkedHashMap<>();
 
@@ -103,7 +99,7 @@ public class Charts {
                 i++;
             }
 
-            // คำอธิบาย (legend)
+      
             int lx = x + size + 20, ly = Math.max(20, y + 10);
             i = 0;
             for (Map.Entry<String, Double> e : data.entrySet()) {
@@ -118,7 +114,7 @@ public class Charts {
         }
     }
 
-    // ===================== กราฟแท่ง =====================
+   
     public static class BarChart extends JPanel {
         private List<String> labels = List.of();
         private double[] income = new double[0];
@@ -152,7 +148,7 @@ public class Charts {
             int left = 60, right = 15, top = 30, bottom = 30;
             int plotW = w - left - right, plotH = h - top - bottom;
 
-            // เส้นกริด + ตัวเลขแกน Y
+
             g2.setFont(g2.getFont().deriveFont(11f));
             for (int i = 0; i <= 4; i++) {
                 int yy = top + plotH - plotH * i / 4;
@@ -163,7 +159,7 @@ public class Charts {
                 g2.drawString(s, left - 8 - g2.getFontMetrics().stringWidth(s), yy + 4);
             }
 
-            // แท่งกราฟ
+           
             int n = labels.size();
             int groupW = plotW / n;
             int barW = Math.max(6, groupW / 3);
@@ -181,7 +177,7 @@ public class Charts {
                 g2.drawString(lb, left + i * groupW + (groupW - g2.getFontMetrics().stringWidth(lb)) / 2, top + plotH + 18);
             }
 
-            // legend มุมบนขวา
+          
             int lx = w - 170;
             g2.setColor(new Color(46, 204, 113)); g2.fillRect(lx, 10, 12, 12);
             g2.setColor(textColor());         g2.drawString("รายรับ", lx + 16, 21);
