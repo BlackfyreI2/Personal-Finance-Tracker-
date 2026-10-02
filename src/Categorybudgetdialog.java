@@ -9,14 +9,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * CategoryBudgetDialog = หน้าต่างตั้ง "งบรายเดือนแยกตามหมวดหมู่"
- */
+
 public class Categorybudgetdialog extends JDialog {
     private Map<String, Double> result = null;   // null = ยกเลิก
     private final Map<String, JTextField> fields = new LinkedHashMap<>();
 
-    /** คืนงบชุดใหม่ (เฉพาะหมวดที่ตั้งงบ > 0) หรือ null ถ้ากดยกเลิก */
+   
     public static Map<String, Double> show(Window owner, Map<String, Double> current, List<Transaction> all) {
         Categorybudgetdialog d = new Categorybudgetdialog(owner, current, all);
         d.setVisible(true);
