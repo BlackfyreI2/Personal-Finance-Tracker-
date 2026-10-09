@@ -103,6 +103,8 @@ public class Main extends JFrame {
         recurring = Filemanager.loadRecurring();
         categoryBudgets = Filemanager.loadCategoryBudgets();
         budget = Filemanager.loadBudget();
+        bills = Filemanager.loadBills();
+        goals = Filemanager.loadGoals();
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.addTab("รายการ", buildListTab());
@@ -117,6 +119,8 @@ public class Main extends JFrame {
         if (added > 0) {
             SwingUtilities.invokeLater(() -> showInfo("เพิ่มรายการประจำอัตโนมัติ " + added + " รายการ"));
         }
+
+        startServices();   // เตือนบิล + ล็อกอัตโนมัติ
     }
 
     // =====================================================
@@ -132,8 +136,20 @@ public class Main extends JFrame {
 
         darkBox.setSelected(dark);
         darkBox.addActionListener(e -> switchTheme(darkBox.isSelected()));
+        billsBtn.addActionListener(e -> openBills());
+        JButton goalsBtn = new JButton("เป้าหมายการออม");
+        goalsBtn.addActionListener(e -> openGoals());
+        JButton securityBtn = new JButton("ความปลอดภัย");
+        securityBtn.addActionListener(e -> openSecurity());
+        JButton lockBtn = new JButton("ล็อก (Ctrl+L)");
+        lockBtn.addActionListener(e -> lockNow());
+
+        header.add(billsBtn);
+        header.add(goalsBtn);
         header.add(recurringBtn);
         header.add(catBudgetBtn);
+        header.add(securityBtn);
+        header.add(lockBtn);
         header.add(darkBox);
         return header;
     }
@@ -410,6 +426,121 @@ public class Main extends JFrame {
         } catch (NumberFormatException e) {
             showError("กรุณากรอกตัวเลขที่ไม่ติดลบ");
         }
+    }
+
+    // =====================================================
+    //   ฟีเจอร์ใหม่: บิลล่วงหน้า / เป้าหมายการออม / รหัสผ่าน
+    // =====================================================
+
+    private List<Bill> bills;
+    private List<Goal> goals;
+    private final Set<String> notifiedBills = new HashSet<>();   // บิลที่เตือนไปแล้ว (กันเตือนซ้ำ)
+    private final JButton billsBtn = new JButton("บิลล่วงหน้า");
+    private boolean passwordEnabled;
+    private int autoLockMinutes;
+    private long lastActivity = System.currentTimeMillis();
+    private boolean locked = false;
+
+    /** เริ่มระบบที่ทำงานเบื้องหลัง: เตือนบิล และล็อกอัตโนมัติ */
+    private void startServices() {
+        refreshSecuritySettings();
+        updateBillBadge();
+        SwingUtilities.invokeLater(this::checkBills);   // เตือนบิลทันทีที่เปิดโปรแกรม
+
+        // เช็คบิลซ้ำทุก 30 นาที เผื่อเปิดโปรแกรมค้างไว้ข้ามวัน
+        new javax.swing.Timer(30 * 60 * 1000, e -> { updateBillBadge(); checkBills(); }).start();
+
+        // จับว่าผู้ใช้ยังขยับเมาส์/พิมพ์อยู่ไหม เพื่อล็อกอัตโนมัติเมื่อไม่มีการใช้งาน
+        Toolkit.getDefaultToolkit().addAWTEventListener(
+                ev -> lastActivity = System.currentTimeMillis(),
+                AWTEvent.MOUSE_EVENT_MASK | AWTEvent.MOUSE_MOTION_EVENT_MASK | AWTEvent.KEY_EVENT_MASK);
+        new javax.swing.Timer(5000, e -> {
+            if (passwordEnabled && autoLockMinutes > 0 && !locked
+                    && System.currentTimeMillis() - lastActivity > autoLockMinutes * 60_000L) {
+                lockNow();
+            }
+        }).start();
+
+        // ทางลัด Ctrl+L = ล็อกทันที
+        getRootPane().registerKeyboardAction(e -> lockNow(), KeyStroke.getKeyStroke("control L"),
+                JComponent.WHEN_IN_FOCUSED_WINDOW);
+    }
+
+    // ---------- บิลล่วงหน้า ----------
+
+    private void openBills() {
+        BillDialog.show(this, bills, transactions);
+        refreshAll();          // ถ้ากด "จ่ายแล้ว" จะมีรายจ่ายใหม่เพิ่มเข้ามา
+        updateBillBadge();
+    }
+
+    /** แสดงจำนวนบิลที่ใกล้/เลยกำหนดบนปุ่ม */
+    private void updateBillBadge() {
+        LocalDate today = LocalDate.now();
+        int n = 0;
+        for (Bill b : bills) if (b.needsReminder(today)) n++;
+        billsBtn.setText(n > 0 ? "บิลล่วงหน้า (" + n + ")" : "บิลล่วงหน้า");
+        billsBtn.setForeground(n > 0 ? warningColor() : null);
+    }
+
+    /** เด้งแจ้งเตือนบิลที่ใกล้ครบกำหนด (แต่ละบิลเตือนครั้งเดียวต่อรอบ) */
+    private void checkBills() {
+        if (locked) return;
+        LocalDate today = LocalDate.now();
+        StringBuilder sb = new StringBuilder();
+        for (Bill b : bills) {
+            if (!b.needsReminder(today)) continue;
+            if (!notifiedBills.add(b.getName() + "|" + b.nextDueDate())) continue;
+            sb.append("• ").append(b.getName()).append("  ").append(money.format(b.getAmount())).append(" บาท  —  ")
+              .append(b.statusText(today)).append(" (").append(b.nextDueDate().format(DATE_FMT)).append(")\n");
+        }
+        if (sb.length() == 0) return;
+
+        Object[] options = {"เปิดหน้าบิล", "ปิด"};
+        int choice = JOptionPane.showOptionDialog(this, "มีบิลใกล้ครบกำหนด/เลยกำหนด:\n\n" + sb,
+                "แจ้งเตือนบิล", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
+        if (choice == 0) openBills();
+    }
+
+    // ---------- เป้าหมายการออม ----------
+
+    private void openGoals() {
+        double balance = Stats.sum(transactions, true) - Stats.sum(transactions, false);
+        GoalDialog.show(this, goals, balance);
+    }
+
+    // ---------- รหัสผ่าน / ล็อก ----------
+
+    private void openSecurity() {
+        SecurityDialog.show(this);
+        refreshSecuritySettings();
+    }
+
+    private void refreshSecuritySettings() {
+        passwordEnabled = PasswordManager.isPasswordSet();
+        autoLockMinutes = PasswordManager.getAutoLockMinutes();
+        lastActivity = System.currentTimeMillis();
+    }
+
+    /** ล็อกโปรแกรม: ซ่อนหน้าต่างทั้งหมด (กันคนแอบดูข้อมูล) แล้วขอรหัสผ่าน */
+    private void lockNow() {
+        if (locked) return;
+        if (!passwordEnabled) {
+            int r = JOptionPane.showConfirmDialog(this, "ยังไม่ได้ตั้งรหัสผ่าน ต้องการตั้งตอนนี้เลยหรือไม่?",
+                    "ล็อกโปรแกรม", JOptionPane.YES_NO_OPTION);
+            if (r == JOptionPane.YES_OPTION) openSecurity();
+            return;
+        }
+        locked = true;
+        for (Window w : getOwnedWindows()) w.dispose();   // ปิดหน้าต่างย่อยที่เปิดค้างอยู่
+        setVisible(false);
+
+        if (!LockDialog.unlock(null)) System.exit(0);     // ปิดหน้าล็อก = ออกจากโปรแกรม
+
+        locked = false;
+        refreshSecuritySettings();   // เผื่อรหัสถูกรีเซ็ตผ่านรหัสกู้คืน
+        setVisible(true);
+        toFront();
     }
 
     private void openRecurring() {
@@ -709,7 +840,13 @@ public class Main extends JFrame {
     }
 
     public static void main(String[] args) {
-        applyTheme(Filemanager.loadDarkMode()); 
-        SwingUtilities.invokeLater(() -> new Main().setVisible(true));
+        applyTheme(Filemanager.loadDarkMode());
+        SwingUtilities.invokeLater(() -> {
+            // ถ้าตั้งรหัสผ่านไว้ ต้องผ่านหน้าล็อกก่อนถึงจะเห็นข้อมูล
+            if (PasswordManager.isPasswordSet() && !LockDialog.unlock(null)) {
+                System.exit(0);
+            }
+            new Main().setVisible(true);
+        });
     }
 }
