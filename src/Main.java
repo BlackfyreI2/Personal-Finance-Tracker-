@@ -1,11 +1,10 @@
 package src;
+
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import javax.swing.plaf.FontUIResource;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
-
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -15,90 +14,72 @@ import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.HashSet;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 
-/**
- * Main = หน้าจอ GUI (Frontend) + จุดเริ่มต้นโปรแกรม
- */
 public class Main extends JFrame {
 
     private static final String ALL = "ทั้งหมด";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final String[] TH_MONTHS = {
+            "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+            "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+    };
 
-    // โหมดมืดหรือไม่ (static เพราะใช้ร่วมกันทั้งโปรแกรม)
-    private static boolean dark = false;
-    
-    // โทนสีใหม่: นุ่มนวล ดูเป็นแอปพลิเคชันการเงินสมัยใหม่
-    private static Color incomeColor()  { return dark ? new Color(80, 220, 120) : new Color(34, 139, 34); } 
-    private static Color expenseColor() { return dark ? new Color(255, 100, 100) : new Color(220, 53, 69); } 
-    private static Color balanceColor() { return dark ? new Color(100, 160, 255) : new Color(0, 102, 204); } 
-    private static Color warningColor() { return dark ? new Color(250, 179, 135) : new Color(243, 156, 18); } 
-
-    // ---------- ข้อมูล ----------
+    // ข้อมูลระบบ
     private List<Transaction> transactions;
     private List<Recurring> recurring;
     private Map<String, Double> categoryBudgets;
     private double budget;
+    private List<Bill> bills;
+    private List<Goal> goals;
     private final DecimalFormat money = new DecimalFormat("#,##0.00");
-    private final DecimalFormat money0 = new DecimalFormat("#,##0");
 
-    // ---------- ฟอร์มเพิ่มรายการ ----------
-    private final JComboBox<String> typeBox = new JComboBox<>(new String[]{Transaction.INCOME, Transaction.EXPENSE});
-    private final JComboBox<String> catBox = new JComboBox<>();
-    private final JTextField nameField = new JTextField(14);
-    private final JTextField amountField = new JTextField(8);
+    // ระบบความปลอดภัยและการเตือน
+    private final Set<String> notifiedBills = new HashSet<>();
+    private boolean passwordEnabled;
+    private int autoLockMinutes;
+    private long lastActivity = System.currentTimeMillis();
+    private boolean locked = false;
 
-    // ---------- ตัวกรอง/ค้นหา ----------
-    private final JComboBox<String> filterType = new JComboBox<>(new String[]{ALL, Transaction.INCOME, Transaction.EXPENSE});
-    private final JComboBox<String> filterMonth = new JComboBox<>();
-    private final JTextField searchField = new JTextField(12);
-    private boolean updatingFilters = false;
+    // UI Layout
+    private final CardLayout cardLayout = new CardLayout();
+    private final JPanel mainContent = new JPanel(cardLayout);
+    private JButton activeMenuBtn = null;
 
-    // ---------- ตาราง ----------
-    private final DefaultTableModel tableModel =
-            new DefaultTableModel(new String[]{"วันที่", "ประเภท", "หมวดหมู่", "ชื่อรายการ", "จำนวนเงิน (บาท)"}, 0) {
-                @Override public boolean isCellEditable(int r, int c) { return false; }
-                @Override public Class<?> getColumnClass(int c) {
-                    if (c == 0) return LocalDate.class;
-                    if (c == 4) return Double.class;
-                    return String.class;
-                }
-            };
-    private final JTable table = new JTable(tableModel);
-    private final TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
-
-    // ---------- สรุปยอด ----------
+    // Dashboard Cards
     private final JLabel incomeLabel = new JLabel();
     private final JLabel expenseLabel = new JLabel();
     private final JLabel balanceLabel = new JLabel();
     private final JLabel countLabel = new JLabel();
-    private final JLabel budgetLabel = new JLabel("งบเดือนนี้:");
-    private final Charts.MeterBar budgetBar = new Charts.MeterBar();
-
-    // ---------- สถิติ ----------
     private final Charts.PieChart pieChart = new Charts.PieChart();
     private final Charts.BarChart barChart = new Charts.BarChart();
-    private final JLabel insightLabel = new JLabel();
-    private final JPanel catBudgetPanel = new JPanel(new GridLayout(0, 1, 0, 4));
 
-    // ---------- ปุ่มธีม ----------
-    private final JCheckBox darkBox = new JCheckBox("โหมดมืด");
+    // Transactions View
+    private final DefaultTableModel tableModel = new DefaultTableModel(new String[]{"วันที่", "ประเภท", "หมวดหมู่", "ชื่อรายการ", "จำนวนเงิน (บาท)"}, 0) {
+        @Override public boolean isCellEditable(int r, int c) { return false; }
+        @Override public Class<?> getColumnClass(int c) {
+            if (c == 0) return LocalDate.class;
+            if (c == 4) return Double.class;
+            return String.class;
+        }
+    };
+    private final JTable table = new JTable(tableModel);
+    private final TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
+    
+    // เก็บ Mapping ระหว่างชื่อเดือนกับค่ารหัส "YYYY-MM"
+    private final Map<String, String> monthKeyMap = new LinkedHashMap<>();
+    private final JComboBox<String> filterMonth = new JComboBox<>();
 
     public Main() {
-        super("โปรแกรมบันทึกรายรับ-รายจ่าย");
+        super("Finance Tracker - โปรแกรมบันทึกรายรับ-รายจ่าย");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(1020, 740);
+        setSize(1280, 800);
+        setMinimumSize(new Dimension(1024, 720));
         setLocationRelativeTo(null);
-        setLayout(new BorderLayout(8, 8));
+        setLayout(new BorderLayout());
+        getContentPane().setBackground(Ui.BG_DARK);
 
-        // อ่านข้อมูลจากไฟล์ตอนเปิดโปรแกรม
         transactions = Filemanager.load();
         recurring = Filemanager.loadRecurring();
         categoryBudgets = Filemanager.loadCategoryBudgets();
@@ -106,351 +87,215 @@ public class Main extends JFrame {
         bills = Filemanager.loadBills();
         goals = Filemanager.loadGoals();
 
-        JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("รายการ", buildListTab());
-        tabs.addTab("สถิติ", buildStatsTab());
-        add(buildHeader(), BorderLayout.NORTH);
-        add(tabs, BorderLayout.CENTER);
-        add(buildBottomPanel(), BorderLayout.SOUTH);
+        add(buildSidebar(), BorderLayout.WEST);
+        
+        mainContent.setBackground(Ui.BG_DARK);
+        mainContent.add(buildDashboard(), "Dashboard");
+        mainContent.add(buildTransactionsView(), "Transactions");
+        add(mainContent, BorderLayout.CENTER);
 
-        // สร้างรายการประจำที่ถึงกำหนด
-        int added = applyRecurring();
+        Charts.dark = true; 
+        applyRecurring();
         refreshAll();
-        if (added > 0) {
-            SwingUtilities.invokeLater(() -> showInfo("เพิ่มรายการประจำอัตโนมัติ " + added + " รายการ"));
+        startServices();
+    }
+
+    private JPanel buildSidebar() {
+        JPanel sidebar = new JPanel();
+        sidebar.setLayout(new BoxLayout(sidebar, BoxLayout.Y_AXIS));
+        sidebar.setBackground(new Color(20, 20, 22));
+        sidebar.setPreferredSize(new Dimension(240, getHeight()));
+        sidebar.setBorder(BorderFactory.createEmptyBorder(30, 20, 30, 20));
+
+        JLabel appTitle = new JLabel("Finance Tracker");
+        appTitle.setForeground(Ui.ACCENT_BLUE);
+        appTitle.setFont(appTitle.getFont().deriveFont(Font.BOLD, 20f));
+        appTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel subtitle = new JLabel("บันทึกการเงินส่วนบุคคล");
+        subtitle.setForeground(Ui.TEXT_MUTED);
+        subtitle.setFont(subtitle.getFont().deriveFont(12f));
+        subtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        sidebar.add(appTitle);
+        sidebar.add(subtitle);
+        sidebar.add(Box.createVerticalStrut(40));
+
+        JButton btnDash = createMenuButton("  หน้าหลัก (แดชบอร์ด)", "Dashboard");
+        JButton btnTrans = createMenuButton("  ประวัติรายการ", "Transactions");
+        activeMenuBtn = btnDash;
+        setMenuActive(btnDash, true);
+        
+        sidebar.add(btnDash);
+        sidebar.add(Box.createVerticalStrut(10));
+        sidebar.add(btnTrans);
+        sidebar.add(Box.createVerticalStrut(10));
+        
+        JButton btnBills = createMenuButton("  บิลและแจ้งเตือน", null);
+        btnBills.addActionListener(e -> { BillDialog.show(this, bills, transactions); refreshAll(); });
+        sidebar.add(btnBills);
+        sidebar.add(Box.createVerticalStrut(10));
+
+        JButton btnGoals = createMenuButton("  เป้าหมายการออม", null);
+        btnGoals.addActionListener(e -> GoalDialog.show(this, goals, getBalance()));
+        sidebar.add(btnGoals);
+        sidebar.add(Box.createVerticalStrut(10));
+        
+        JButton btnRecur = createMenuButton("  รายการประจำ", null);
+        btnRecur.addActionListener(e -> { Recurringdialog.show(this, recurring); applyRecurring(); refreshAll(); });
+        sidebar.add(btnRecur);
+
+        sidebar.add(Box.createVerticalGlue());
+
+        JButton btnSettings = createMenuButton("  ตั้งค่าและความปลอดภัย", null);
+        btnSettings.addActionListener(e -> { SecurityDialog.show(this); refreshSecuritySettings(); });
+        sidebar.add(btnSettings);
+
+        return sidebar;
+    }
+
+    private JButton createMenuButton(String text, String cardName) {
+        JButton btn = new JButton(text);
+        btn.setMaximumSize(new Dimension(200, 42));
+        btn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btn.setBackground(new Color(30, 30, 35));
+        btn.setForeground(Ui.TEXT_LIGHT);
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+        btn.setHorizontalAlignment(SwingConstants.LEFT);
+        btn.setFont(btn.getFont().deriveFont(Font.BOLD, 13f));
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        if (cardName != null) {
+            btn.addActionListener(e -> {
+                cardLayout.show(mainContent, cardName);
+                if (activeMenuBtn != null) setMenuActive(activeMenuBtn, false);
+                activeMenuBtn = btn;
+                setMenuActive(btn, true);
+            });
         }
-
-        startServices();   // เตือนบิล + ล็อกอัตโนมัติ
+        return btn;
     }
 
-    // =====================================================
-    //                    สร้างหน้าจอ
-    // =====================================================
-
-    private JPanel buildHeader() {
-        JPanel header = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
-        JButton recurringBtn = new JButton("รายการประจำ");
-        JButton catBudgetBtn = new JButton("งบตามหมวด");
-        recurringBtn.addActionListener(e -> openRecurring());
-        catBudgetBtn.addActionListener(e -> openCategoryBudgets());
-
-        darkBox.setSelected(dark);
-        darkBox.addActionListener(e -> switchTheme(darkBox.isSelected()));
-        billsBtn.addActionListener(e -> openBills());
-        JButton goalsBtn = new JButton("เป้าหมายการออม");
-        goalsBtn.addActionListener(e -> openGoals());
-        JButton securityBtn = new JButton("ความปลอดภัย");
-        securityBtn.addActionListener(e -> openSecurity());
-        JButton lockBtn = new JButton("ล็อก (Ctrl+L)");
-        lockBtn.addActionListener(e -> lockNow());
-
-        header.add(billsBtn);
-        header.add(goalsBtn);
-        header.add(recurringBtn);
-        header.add(catBudgetBtn);
-        header.add(securityBtn);
-        header.add(lockBtn);
-        header.add(darkBox);
-        return header;
+    private void setMenuActive(JButton btn, boolean active) {
+        btn.setBackground(active ? Ui.ACCENT_BLUE : new Color(30, 30, 35));
+        btn.setForeground(active ? Color.WHITE : Ui.TEXT_LIGHT);
     }
 
-    private JPanel buildListTab() {
-        JPanel tab = new JPanel(new BorderLayout(8, 8));
-        tab.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
+    private JPanel buildDashboard() {
+        JPanel dash = new JPanel(new BorderLayout(20, 20));
+        dash.setBackground(Ui.BG_DARK);
+        dash.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
+        
+        JPanel topMetrics = new JPanel(new GridLayout(1, 4, 15, 0));
+        topMetrics.setOpaque(false);
+        topMetrics.add(Ui.metricCard("รายรับเดือนนี้", incomeLabel));
+        topMetrics.add(Ui.metricCard("รายจ่ายเดือนนี้", expenseLabel));
+        topMetrics.add(Ui.metricCard("คงเหลือเดือนนี้", balanceLabel));
+        topMetrics.add(Ui.metricCard("จำนวนรายการ", countLabel));
 
-        // --- ฟอร์มเพิ่มรายการ ---
-        JPanel form = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
-        form.setBorder(BorderFactory.createTitledBorder("เพิ่มรายการ (วันที่ใช้วันนี้อัตโนมัติ)"));
-        fillCategories(catBox, typeBox);
-        typeBox.addActionListener(e -> fillCategories(catBox, typeBox));
-        catBox.setPrototypeDisplayValue("บิล/สาธารณูปโภค");
-        filterType.setPrototypeDisplayValue("ทั้งหมด  ");
-        JButton addBtn = new JButton("เพิ่ม");
-        addBtn.addActionListener(e -> addTransaction());
-        amountField.addActionListener(e -> addTransaction());
-        form.add(new JLabel("ประเภท:"));     form.add(typeBox);
-        form.add(new JLabel("หมวดหมู่:"));   form.add(catBox);
-        form.add(new JLabel("ชื่อรายการ:")); form.add(nameField);
-        form.add(new JLabel("จำนวนเงิน:"));  form.add(amountField);
-        form.add(addBtn);
+        // ย้ายปุ่ม "จัดการงบประมาณ" กลับมาไว้ในเมนูด่วนตรงนี้
+        JPanel quickAccess = Ui.titledCard("เมนูด่วน", Ui.toolbar(
+            createActionButton("+ เพิ่มรายรับ", true, this::addQuickIncome),
+            createActionButton("- เพิ่มรายจ่าย", false, this::addQuickExpense),
+            createActionButton("จัดการงบประมาณ", true, () -> Categorybudgetdialog.show(this, categoryBudgets, transactions)),
+            createActionButton("ล็อกโปรแกรม", false, this::lockNow)
+        ));
 
-        // --- ตัวกรอง/ค้นหา ---
-        JPanel filter = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
-        filter.setBorder(BorderFactory.createTitledBorder("ค้นหา / กรอง"));
-        filter.add(new JLabel("ค้นหา:"));  filter.add(searchField);
-        filter.add(new JLabel("ประเภท:")); filter.add(filterType);
-        filter.add(new JLabel("เดือน:"));  filter.add(filterMonth);
-        JButton clearBtn = new JButton("ล้างตัวกรอง");
-        clearBtn.addActionListener(e -> clearFilters());
-        filter.add(clearBtn);
+        JPanel chartsPanel = new JPanel(new GridLayout(1, 2, 20, 0));
+        chartsPanel.setOpaque(false);
+        pieChart.setPreferredSize(new Dimension(0, 300));
+        barChart.setPreferredSize(new Dimension(0, 300));
+        chartsPanel.add(Ui.titledCard("สัดส่วนรายจ่ายเดือนนี้", pieChart));
+        chartsPanel.add(Ui.titledCard("แนวโน้ม 6 เดือนย้อนหลัง", barChart));
 
-        searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-            public void insertUpdate(javax.swing.event.DocumentEvent e)  { applyFilter(); }
-            public void removeUpdate(javax.swing.event.DocumentEvent e)  { applyFilter(); }
-            public void changedUpdate(javax.swing.event.DocumentEvent e) { applyFilter(); }
-        });
-        filterType.addActionListener(e -> applyFilter());
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 20));
+        centerPanel.setOpaque(false);
+        centerPanel.add(quickAccess, BorderLayout.NORTH);
+        centerPanel.add(chartsPanel, BorderLayout.CENTER);
+
+        dash.add(topMetrics, BorderLayout.NORTH);
+        dash.add(centerPanel, BorderLayout.CENTER);
+        return dash;
+    }
+
+    private JPanel buildTransactionsView() {
+        JPanel panel = new JPanel(new BorderLayout(15, 15));
+        panel.setBackground(Ui.BG_DARK);
+        panel.setBorder(BorderFactory.createEmptyBorder(25, 25, 25, 25));
+
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        toolbar.setOpaque(false);
+        
+        JLabel lblFilter = new JLabel("เลือกเดือน:");
+        lblFilter.setForeground(Ui.TEXT_LIGHT);
+        lblFilter.setFont(lblFilter.getFont().deriveFont(Font.BOLD, 13f));
+        
+        toolbar.add(lblFilter);
+        toolbar.add(filterMonth);
         filterMonth.addActionListener(e -> applyFilter());
 
-        JPanel north = new JPanel(new GridLayout(2, 1, 0, 4));
-        north.add(form);
-        north.add(filter);
-        tab.add(north, BorderLayout.NORTH);
+        JPanel actionArea = Ui.toolbar(
+            createActionButton("แก้ไขรายการ", true, this::editSelected),
+            createActionButton("ลบรายการ", false, this::deleteSelected),
+            createActionButton("นำเข้า CSV", true, this::importCsv),
+            createActionButton("ส่งออก CSV", true, this::exportCsv)
+        );
 
-        // --- ตาราง ---
-        table.setRowHeight(26);
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        JPanel topWrapper = new JPanel(new BorderLayout());
+        topWrapper.setOpaque(false);
+        topWrapper.add(toolbar, BorderLayout.WEST);
+        topWrapper.add(actionArea, BorderLayout.EAST);
+
+        Ui.styleTable(table);
         table.setRowSorter(sorter);
-        table.getColumnModel().getColumn(0).setPreferredWidth(90);
-        table.getColumnModel().getColumn(1).setPreferredWidth(70);
-        table.getColumnModel().getColumn(2).setPreferredWidth(120);
-        table.getColumnModel().getColumn(3).setPreferredWidth(260);
-        table.getColumnModel().getColumn(4).setPreferredWidth(120);
         installRenderers();
+        
         table.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) editSelected();
             }
         });
-        tab.add(new JScrollPane(table), BorderLayout.CENTER);
 
-        // --- ปุ่มด้านล่างตาราง ---
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 6));
-        JButton editBtn = new JButton("แก้ไขที่เลือก");
-        JButton delBtn = new JButton("ลบที่เลือก");
-        JButton importBtn = new JButton("นำเข้า CSV");
-        JButton exportBtn = new JButton("ส่งออก CSV");
-        editBtn.addActionListener(e -> editSelected());
-        delBtn.addActionListener(e -> deleteSelected());
-        importBtn.addActionListener(e -> importCsv());
-        exportBtn.addActionListener(e -> exportCsv());
-        actions.add(new JLabel("เคล็ดลับ: คลิกหัวตารางเพื่อเรียงลำดับ / ดับเบิลคลิกที่แถวเพื่อแก้ไข"));
-        actions.add(editBtn);
-        actions.add(delBtn);
-        actions.add(importBtn);
-        actions.add(exportBtn);
-        tab.add(actions, BorderLayout.SOUTH);
-        return tab;
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.getViewport().setBackground(Ui.BG_CARD);
+        scroll.setBorder(BorderFactory.createLineBorder(Ui.BORDER_COLOR));
+
+        panel.add(topWrapper, BorderLayout.NORTH);
+        panel.add(scroll, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JButton createActionButton(String text, boolean isPrimary, Runnable action) {
+        JButton btn = isPrimary ? Ui.primary(text) : Ui.secondary(text);
+        btn.addActionListener(e -> action.run());
+        return btn;
     }
 
     private void installRenderers() {
-        RowRenderer renderer = new RowRenderer();
-        table.setDefaultRenderer(Object.class, renderer);
-        table.setDefaultRenderer(Double.class, renderer);
-    }
+        table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable t, Object value, boolean selected, boolean focus, int row, int col) {
+                if (value instanceof Double) value = money.format((Double) value);
+                else if (value instanceof LocalDate) value = ((LocalDate) value).format(DATE_FMT);
 
-    void switchTheme(boolean darkMode) {
-        Filemanager.saveDarkMode(darkMode);
-        applyTheme(darkMode);
-        installRenderers();
-        darkBox.setSelected(darkMode);
-        updateSummary();
-        updateStats();
-        table.repaint();
-    }
-
-    private JPanel buildStatsTab() {
-        JPanel tab = new JPanel(new BorderLayout(8, 8));
-        tab.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
-
-        pieChart.setBorder(BorderFactory.createTitledBorder("สัดส่วนรายจ่ายตามหมวดหมู่ (ตามตัวกรอง)"));
-        barChart.setBorder(BorderFactory.createTitledBorder("รายรับ-รายจ่ายย้อนหลัง 6 เดือน"));
-        JPanel charts = new JPanel(new GridLayout(1, 2, 8, 0));
-        charts.add(pieChart);
-        charts.add(barChart);
-
-        insightLabel.setBorder(BorderFactory.createTitledBorder("ข้อมูลเชิงลึก (ตามตัวกรอง)"));
-        insightLabel.setVerticalAlignment(SwingConstants.TOP);
-
-        JScrollPane catScroll = new JScrollPane(catBudgetPanel);
-        catScroll.setBorder(BorderFactory.createTitledBorder("งบตามหมวดหมู่ (เดือนนี้)"));
-
-        JPanel south = new JPanel(new GridLayout(1, 2, 8, 0));
-        south.setPreferredSize(new Dimension(100, 190));
-        south.add(insightLabel);
-        south.add(catScroll);
-
-        tab.add(charts, BorderLayout.CENTER);
-        tab.add(south, BorderLayout.SOUTH);
-        return tab;
-    }
-
-    private JPanel buildBottomPanel() {
-        JPanel p = new JPanel(new GridLayout(2, 1, 0, 6));
-        p.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(0, 8, 8, 8),
-                BorderFactory.createTitledBorder("สรุปยอด (Real-time ตามตัวกรองที่เลือก)")));
-
-        Font big = new Font("Tahoma", Font.BOLD, 14);
-        JPanel row1 = new JPanel(new GridLayout(1, 4, 10, 0));
-        for (JLabel l : new JLabel[]{incomeLabel, expenseLabel, balanceLabel, countLabel}) {
-            l.setFont(big);
-            row1.add(l);
-        }
-
-        JButton budgetBtn = new JButton("ตั้งงบรวมรายเดือน");
-        budgetBtn.addActionListener(e -> setBudget());
-        JPanel row2 = new JPanel(new BorderLayout(8, 0));
-        row2.add(budgetLabel, BorderLayout.WEST);
-        row2.add(budgetBar, BorderLayout.CENTER);
-        row2.add(budgetBtn, BorderLayout.EAST);
-
-        p.add(row1);
-        p.add(row2);
-        return p;
-    }
-
-    private class RowRenderer extends DefaultTableCellRenderer {
-        @Override
-        public Component getTableCellRendererComponent(JTable t, Object value, boolean selected,
-                                                       boolean focus, int row, int col) {
-            if (value instanceof Double) value = money.format((Double) value);
-            else if (value instanceof LocalDate) value = ((LocalDate) value).format(DATE_FMT);
-
-            Component c = super.getTableCellRendererComponent(t, value, selected, focus, row, col);
-            setHorizontalAlignment(col == 4 ? RIGHT : LEFT);
-            if (selected) {
-                c.setForeground(t.getSelectionForeground());
-            } else {
-                boolean income = Transaction.INCOME.equals(t.getValueAt(row, 1));
-                c.setForeground(income ? incomeColor() : expenseColor());
+                Component c = super.getTableCellRendererComponent(t, value, selected, focus, row, col);
+                setHorizontalAlignment(col == 4 ? RIGHT : LEFT);
+                
+                if (!selected) {
+                    c.setBackground(Ui.BG_CARD);
+                    boolean income = Transaction.INCOME.equals(t.getValueAt(row, 1));
+                    c.setForeground(income ? new Color(80, 220, 120) : new Color(255, 100, 100));
+                }
+                return c;
             }
-            return c;
-        }
+        });
     }
 
-    // =====================================================
-    //                    การทำงานหลัก
-    // =====================================================
-
-    private static void fillCategories(JComboBox<String> catBox, JComboBox<String> typeBox) {
-        catBox.removeAllItems();
-        for (String c : Transaction.categoriesFor((String) typeBox.getSelectedItem())) catBox.addItem(c);
-    }
-
-    private void addTransaction() {
-        String name = nameField.getText().trim();
-        String amountText = amountField.getText().trim().replace(",", "");
-        if (name.isEmpty() || amountText.isEmpty()) {
-            showError("กรุณากรอกชื่อรายการและจำนวนเงิน");
-            return;
-        }
-        double amount;
-        try {
-            amount = Double.parseDouble(amountText);
-        } catch (NumberFormatException ex) {
-            showError("จำนวนเงินต้องเป็นตัวเลข");
-            return;
-        }
-        if (amount <= 0) {
-            showError("จำนวนเงินต้องมากกว่า 0");
-            return;
-        }
-
-        String type = (String) typeBox.getSelectedItem();
-        String category = (String) catBox.getSelectedItem();
-        transactions.add(new Transaction(type, category, name, amount, LocalDate.now()));
-        Filemanager.save(transactions);
-
-        nameField.setText("");
-        amountField.setText("");
-        nameField.requestFocus();
-        refreshAll();
-
-        if (type.equals(Transaction.EXPENSE)) checkBudgetAlerts(category, amount);
-    }
-
-    private void checkBudgetAlerts(String category, double justAdded) {
-        YearMonth now = YearMonth.now();
-        if (budget > 0) {
-            double after = Stats.monthTotal(transactions, now, false);
-            alertIfCrossed("งบรวมเดือนนี้", after - justAdded, after, budget);
-        }
-        double limit = categoryBudgets.getOrDefault(category, 0.0);
-        if (limit > 0) {
-            double after = Stats.monthCategoryExpense(transactions, now, category);
-            alertIfCrossed("งบหมวด \"" + category + "\"", after - justAdded, after, limit);
-        }
-    }
-
-    private void alertIfCrossed(String title, double before, double after, double limit) {
-        if (before <= limit && after > limit) {
-            JOptionPane.showMessageDialog(this,
-                    title + " เกินแล้ว!\nใช้ไป " + money.format(after) + " จากงบ " + money.format(limit),
-                    "เตือนงบประมาณ", JOptionPane.WARNING_MESSAGE);
-        } else if (before < limit * 0.8 && after >= limit * 0.8 && after <= limit) {
-            JOptionPane.showMessageDialog(this,
-                    title + " ใช้ไปเกิน 80% แล้ว\nใช้ไป " + money.format(after) + " จากงบ " + money.format(limit),
-                    "เตือนงบประมาณ", JOptionPane.INFORMATION_MESSAGE);
-        }
-    }
-
-    private int selectedIndex() {
-        int viewRow = table.getSelectedRow();
-        return viewRow < 0 ? -1 : table.convertRowIndexToModel(viewRow);
-    }
-
-    private void editSelected() {
-        int idx = selectedIndex();
-        if (idx < 0) { showInfo("กรุณาเลือกรายการที่ต้องการแก้ไขก่อน"); return; }
-        Transaction edited = Transactiondialog.show(this, transactions.get(idx));
-        if (edited != null) {
-            transactions.set(idx, edited);
-            Filemanager.save(transactions);
-            refreshAll();
-        }
-    }
-
-    private void deleteSelected() {
-        int idx = selectedIndex();
-        if (idx < 0) { showInfo("กรุณาเลือกรายการที่ต้องการลบก่อน"); return; }
-        int ok = JOptionPane.showConfirmDialog(this, "ต้องการลบรายการนี้ใช่หรือไม่?",
-                "ยืนยันการลบ", JOptionPane.YES_NO_OPTION);
-        if (ok == JOptionPane.YES_OPTION) {
-            transactions.remove(idx);
-            Filemanager.save(transactions);
-            refreshAll();
-        }
-    }
-
-    private void setBudget() {
-        String input = JOptionPane.showInputDialog(this,
-                "ตั้งงบรายจ่ายรวมต่อเดือน (บาท)\nใส่ 0 เพื่อปิดการใช้งบ", budget > 0 ? String.valueOf(budget) : "");
-        if (input == null) return;
-        try {
-            double v = Double.parseDouble(input.trim().replace(",", ""));
-            if (v < 0) throw new NumberFormatException();
-            budget = v;
-            Filemanager.saveBudget(budget);
-            updateSummary();
-        } catch (NumberFormatException e) {
-            showError("กรุณากรอกตัวเลขที่ไม่ติดลบ");
-        }
-    }
-
-    // =====================================================
-    //   ฟีเจอร์ใหม่: บิลล่วงหน้า / เป้าหมายการออม / รหัสผ่าน
-    // =====================================================
-
-    private List<Bill> bills;
-    private List<Goal> goals;
-    private final Set<String> notifiedBills = new HashSet<>();   // บิลที่เตือนไปแล้ว (กันเตือนซ้ำ)
-    private final JButton billsBtn = new JButton("บิลล่วงหน้า");
-    private boolean passwordEnabled;
-    private int autoLockMinutes;
-    private long lastActivity = System.currentTimeMillis();
-    private boolean locked = false;
-
-    /** เริ่มระบบที่ทำงานเบื้องหลัง: เตือนบิล และล็อกอัตโนมัติ */
     private void startServices() {
         refreshSecuritySettings();
-        updateBillBadge();
-        SwingUtilities.invokeLater(this::checkBills);   // เตือนบิลทันทีที่เปิดโปรแกรม
+        SwingUtilities.invokeLater(this::checkBills);
 
-        // เช็คบิลซ้ำทุก 30 นาที เผื่อเปิดโปรแกรมค้างไว้ข้ามวัน
-        new javax.swing.Timer(30 * 60 * 1000, e -> { updateBillBadge(); checkBills(); }).start();
+        new javax.swing.Timer(30 * 60 * 1000, e -> checkBills()).start();
 
-        // จับว่าผู้ใช้ยังขยับเมาส์/พิมพ์อยู่ไหม เพื่อล็อกอัตโนมัติเมื่อไม่มีการใช้งาน
         Toolkit.getDefaultToolkit().addAWTEventListener(
                 ev -> lastActivity = System.currentTimeMillis(),
                 AWTEvent.MOUSE_EVENT_MASK | AWTEvent.MOUSE_MOTION_EVENT_MASK | AWTEvent.KEY_EVENT_MASK);
@@ -461,29 +306,10 @@ public class Main extends JFrame {
             }
         }).start();
 
-        // ทางลัด Ctrl+L = ล็อกทันที
         getRootPane().registerKeyboardAction(e -> lockNow(), KeyStroke.getKeyStroke("control L"),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
     }
 
-    // ---------- บิลล่วงหน้า ----------
-
-    private void openBills() {
-        BillDialog.show(this, bills, transactions);
-        refreshAll();          // ถ้ากด "จ่ายแล้ว" จะมีรายจ่ายใหม่เพิ่มเข้ามา
-        updateBillBadge();
-    }
-
-    /** แสดงจำนวนบิลที่ใกล้/เลยกำหนดบนปุ่ม */
-    private void updateBillBadge() {
-        LocalDate today = LocalDate.now();
-        int n = 0;
-        for (Bill b : bills) if (b.needsReminder(today)) n++;
-        billsBtn.setText(n > 0 ? "บิลล่วงหน้า (" + n + ")" : "บิลล่วงหน้า");
-        billsBtn.setForeground(n > 0 ? warningColor() : null);
-    }
-
-    /** เด้งแจ้งเตือนบิลที่ใกล้ครบกำหนด (แต่ละบิลเตือนครั้งเดียวต่อรอบ) */
     private void checkBills() {
         if (locked) return;
         LocalDate today = LocalDate.now();
@@ -499,21 +325,7 @@ public class Main extends JFrame {
         Object[] options = {"เปิดหน้าบิล", "ปิด"};
         int choice = JOptionPane.showOptionDialog(this, "มีบิลใกล้ครบกำหนด/เลยกำหนด:\n\n" + sb,
                 "แจ้งเตือนบิล", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[0]);
-        if (choice == 0) openBills();
-    }
-
-    // ---------- เป้าหมายการออม ----------
-
-    private void openGoals() {
-        double balance = Stats.sum(transactions, true) - Stats.sum(transactions, false);
-        GoalDialog.show(this, goals, balance);
-    }
-
-    // ---------- รหัสผ่าน / ล็อก ----------
-
-    private void openSecurity() {
-        SecurityDialog.show(this);
-        refreshSecuritySettings();
+        if (choice == 0) { BillDialog.show(this, bills, transactions); refreshAll(); }
     }
 
     private void refreshSecuritySettings() {
@@ -522,60 +334,162 @@ public class Main extends JFrame {
         lastActivity = System.currentTimeMillis();
     }
 
-    /** ล็อกโปรแกรม: ซ่อนหน้าต่างทั้งหมด (กันคนแอบดูข้อมูล) แล้วขอรหัสผ่าน */
     private void lockNow() {
         if (locked) return;
         if (!passwordEnabled) {
             int r = JOptionPane.showConfirmDialog(this, "ยังไม่ได้ตั้งรหัสผ่าน ต้องการตั้งตอนนี้เลยหรือไม่?",
                     "ล็อกโปรแกรม", JOptionPane.YES_NO_OPTION);
-            if (r == JOptionPane.YES_OPTION) openSecurity();
+            if (r == JOptionPane.YES_OPTION) { SecurityDialog.show(this); refreshSecuritySettings(); }
             return;
         }
         locked = true;
-        for (Window w : getOwnedWindows()) w.dispose();   // ปิดหน้าต่างย่อยที่เปิดค้างอยู่
+        for (Window w : getOwnedWindows()) w.dispose();
         setVisible(false);
 
-        if (!LockDialog.unlock(null)) System.exit(0);     // ปิดหน้าล็อก = ออกจากโปรแกรม
+        if (!LockDialog.unlock(null)) System.exit(0);
 
         locked = false;
-        refreshSecuritySettings();   // เผื่อรหัสถูกรีเซ็ตผ่านรหัสกู้คืน
+        refreshSecuritySettings();
         setVisible(true);
         toFront();
     }
 
-    private void openRecurring() {
-        Recurringdialog.show(this, recurring);
-        int added = applyRecurring();
-        if (added > 0) {
+    private void addQuickIncome() { promptTransaction(Transaction.INCOME); }
+    private void addQuickExpense() { promptTransaction(Transaction.EXPENSE); }
+
+    private void promptTransaction(String type) {
+        Transaction dummy = new Transaction(type, type.equals(Transaction.INCOME) ? "เงินเดือน" : "อาหาร", "", 0, LocalDate.now());
+        Transaction added = Transactiondialog.show(this, dummy);
+        if (added != null) {
+            transactions.add(added);
+            Filemanager.save(transactions);
             refreshAll();
-            showInfo("เพิ่มรายการประจำอัตโนมัติ " + added + " รายการ");
         }
     }
 
-    private int applyRecurring() {
-        int count = 0;
+    private int selectedIndex() {
+        int viewRow = table.getSelectedRow();
+        return viewRow < 0 ? -1 : table.convertRowIndexToModel(viewRow);
+    }
+
+    private void editSelected() {
+        int idx = selectedIndex();
+        if (idx < 0) { JOptionPane.showMessageDialog(this, "กรุณาเลือกรายการที่ต้องการแก้ไขก่อน"); return; }
+        Transaction edited = Transactiondialog.show(this, transactions.get(idx));
+        if (edited != null) {
+            transactions.set(idx, edited);
+            Filemanager.save(transactions);
+            refreshAll();
+        }
+    }
+
+    private void deleteSelected() {
+        int idx = selectedIndex();
+        if (idx < 0) { JOptionPane.showMessageDialog(this, "กรุณาเลือกรายการที่ต้องการลบก่อน"); return; }
+        int ok = JOptionPane.showConfirmDialog(this, "ต้องการลบรายการนี้ใช่หรือไม่?", "ยืนยันการลบ", JOptionPane.YES_NO_OPTION);
+        if (ok == JOptionPane.YES_OPTION) {
+            transactions.remove(idx);
+            Filemanager.save(transactions);
+            refreshAll();
+        }
+    }
+    
+    private void applyRecurring() {
         LocalDate today = LocalDate.now();
+        boolean changed = false;
         for (Recurring r : recurring) {
             List<Transaction> due = r.applyDue(today);
-            transactions.addAll(due);
-            count += due.size();
+            if (!due.isEmpty()) {
+                transactions.addAll(due);
+                changed = true;
+            }
         }
-        if (count > 0) {
+        if (changed) {
             Filemanager.save(transactions);
             Filemanager.saveRecurring(recurring);
         }
-        return count;
     }
 
-    private void openCategoryBudgets() {
-        Map<String, Double> updated = Categorybudgetdialog.show(this, categoryBudgets, transactions);
-        if (updated != null) {
-            categoryBudgets = updated;
-            Filemanager.saveCategoryBudgets(categoryBudgets);
-            updateStats();
+    private double getBalance() {
+        return Stats.sum(transactions, true) - Stats.sum(transactions, false);
+    }
+
+    private void refreshAll() {
+        tableModel.setRowCount(0);
+        for (Transaction t : transactions) {
+            tableModel.addRow(new Object[]{t.getDate(), t.getType(), t.getCategory(), t.getName(), t.getAmount()});
+        }
+        
+        rebuildMonthFilter();
+        applyFilter();
+    }
+
+    private void rebuildMonthFilter() {
+        Object selectedLabel = filterMonth.getSelectedItem();
+        monthKeyMap.clear();
+        monthKeyMap.put(ALL, ALL);
+
+        YearMonth current = YearMonth.now();
+        for (int i = -24; i <= 12; i++) {
+            YearMonth ym = current.plusMonths(i);
+            String label = TH_MONTHS[ym.getMonthValue() - 1] + " " + (ym.getYear() + 543);
+            monthKeyMap.put(label, ym.toString());
+        }
+
+        filterMonth.removeAllItems();
+        for (String label : monthKeyMap.keySet()) {
+            filterMonth.addItem(label);
+        }
+
+        if (selectedLabel != null && monthKeyMap.containsKey(selectedLabel.toString())) {
+            filterMonth.setSelectedItem(selectedLabel);
+        } else {
+            filterMonth.setSelectedItem(TH_MONTHS[current.getMonthValue() - 1] + " " + (current.getYear() + 543));
         }
     }
 
+    private void applyFilter() {
+        String selectedLabel = (String) filterMonth.getSelectedItem();
+        final String monthKey = monthKeyMap.getOrDefault(selectedLabel, ALL);
+
+        sorter.setRowFilter(new RowFilter<DefaultTableModel, Integer>() {
+            @Override
+            public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> e) {
+                if (monthKey != null && !ALL.equals(monthKey) && !e.getValue(0).toString().startsWith(monthKey)) return false;
+                return true;
+            }
+        });
+        updateDashboard();
+    }
+
+    private void updateDashboard() {
+        List<Transaction> v = new ArrayList<>();
+        for (int i = 0; i < table.getRowCount(); i++) v.add(transactions.get(table.convertRowIndexToModel(i)));
+        
+        double inc = Stats.sum(v, true);
+        double exp = Stats.sum(v, false);
+        incomeLabel.setText("฿ " + money.format(inc));
+        expenseLabel.setText("฿ " + money.format(exp));
+        balanceLabel.setText("฿ " + money.format(inc - exp));
+        countLabel.setText(v.size() + " รายการ");
+        
+        pieChart.setData(Stats.expenseByCategory(v));
+        
+        List<String> labels = new ArrayList<>();
+        double[] incArr = new double[6];
+        double[] expArr = new double[6];
+        YearMonth now = YearMonth.now();
+        for (int i = 0; i < 6; i++) {
+            YearMonth ym = now.minusMonths(5 - i);
+            labels.add(ym.toString());
+            incArr[i] = Stats.monthTotal(transactions, ym, true);
+            expArr[i] = Stats.monthTotal(transactions, ym, false);
+        }
+        barChart.setData(labels, incArr, expArr);
+        
+        repaint();
+    }
+    
     private void importCsv() {
         JFileChooser chooser = new JFileChooser();
         chooser.setFileFilter(new FileNameExtensionFilter("ไฟล์ CSV", "csv"));
@@ -585,7 +499,7 @@ public class Main extends JFrame {
         try {
             result = Filemanager.importCsv(chooser.getSelectedFile());
         } catch (IOException e) {
-            showError("อ่านไฟล์ไม่สำเร็จ: " + e.getMessage());
+            JOptionPane.showMessageDialog(this, "อ่านไฟล์ไม่สำเร็จ: " + e.getMessage(), "ข้อผิดพลาด", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
@@ -602,7 +516,7 @@ public class Main extends JFrame {
                 + "ซ้ำกับที่มีอยู่ (จะข้าม): " + duplicates + "\n"
                 + "ข้อมูลไม่ถูกต้อง (จะข้าม): " + result.invalid;
         if (fresh.isEmpty()) {
-            showInfo(summary + "\n\nไม่มีรายการใหม่ให้นำเข้า");
+            JOptionPane.showMessageDialog(this, summary + "\n\nไม่มีรายการใหม่ให้นำเข้า");
             return;
         }
         int ok = JOptionPane.showConfirmDialog(this, summary + "\n\nนำเข้า " + fresh.size() + " รายการใหม่เลยหรือไม่?",
@@ -611,238 +525,41 @@ public class Main extends JFrame {
             transactions.addAll(fresh);
             Filemanager.save(transactions);
             refreshAll();
-            showInfo("นำเข้าเรียบร้อย " + fresh.size() + " รายการ");
+            JOptionPane.showMessageDialog(this, "นำเข้าเรียบร้อย " + fresh.size() + " รายการ");
         }
     }
 
     private void exportCsv() {
-        List<Transaction> v = visible();
-        if (v.isEmpty()) { showInfo("ไม่มีข้อมูลให้ส่งออก"); return; }
+        List<Transaction> v = new ArrayList<>();
+        for (int i = 0; i < table.getRowCount(); i++) v.add(transactions.get(table.convertRowIndexToModel(i)));
+        
+        if (v.isEmpty()) { JOptionPane.showMessageDialog(this, "ไม่มีข้อมูลให้ส่งออก"); return; }
         JFileChooser chooser = new JFileChooser();
         chooser.setSelectedFile(new File("รายรับรายจ่าย.csv"));
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
             File f = chooser.getSelectedFile();
             if (!f.getName().toLowerCase().endsWith(".csv")) f = new File(f.getPath() + ".csv");
-            if (Filemanager.exportCsv(v, f)) showInfo("ส่งออก " + v.size() + " รายการเรียบร้อย\n" + f.getAbsolutePath());
-            else showError("ส่งออกไม่สำเร็จ");
-        }
-    }
-
-    private void refreshAll() {
-        tableModel.setRowCount(0);
-        for (Transaction t : transactions) {
-            tableModel.addRow(new Object[]{t.getDate(), t.getType(), t.getCategory(), t.getName(), t.getAmount()});
-        }
-        rebuildMonthFilter();
-        applyFilter();
-    }
-
-    private void rebuildMonthFilter() {
-        Object selected = filterMonth.getSelectedItem();
-        TreeSet<String> months = new TreeSet<>(Collections.reverseOrder());
-        for (Transaction t : transactions) months.add(YearMonth.from(t.getDate()).toString());
-
-        updatingFilters = true;
-        filterMonth.removeAllItems();
-        filterMonth.addItem(ALL);
-        for (String m : months) filterMonth.addItem(m);
-        filterMonth.setSelectedItem(selected != null && (selected.equals(ALL) || months.contains(selected)) ? selected : ALL);
-        updatingFilters = false;
-    }
-
-    private void clearFilters() {
-        updatingFilters = true;
-        searchField.setText("");
-        filterType.setSelectedItem(ALL);
-        filterMonth.setSelectedItem(ALL);
-        updatingFilters = false;
-        applyFilter();
-    }
-
-    private void applyFilter() {
-        if (updatingFilters) return;
-        final String type = (String) filterType.getSelectedItem();
-        final String month = (String) filterMonth.getSelectedItem();
-        final String query = searchField.getText().trim().toLowerCase();
-
-        sorter.setRowFilter(new RowFilter<DefaultTableModel, Integer>() {
-            @Override
-            public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> e) {
-                if (!ALL.equals(type) && !type.equals(e.getStringValue(1))) return false;
-                if (month != null && !ALL.equals(month) && !e.getValue(0).toString().startsWith(month)) return false;
-                if (!query.isEmpty()) {
-                    String text = (e.getStringValue(2) + " " + e.getStringValue(3)).toLowerCase();
-                    if (!text.contains(query)) return false;
-                }
-                return true;
-            }
-        });
-        updateSummary();
-        updateStats();
-    }
-
-    private List<Transaction> visible() {
-        List<Transaction> v = new ArrayList<>();
-        for (int i = 0; i < table.getRowCount(); i++) {
-            v.add(transactions.get(table.convertRowIndexToModel(i)));
-        }
-        return v;
-    }
-
-    private void updateSummary() {
-        List<Transaction> v = visible();
-        double income = Stats.sum(v, true);
-        double expense = Stats.sum(v, false);
-        double balance = income - expense;
-        incomeLabel.setText("รายรับรวม: " + money.format(income));
-        expenseLabel.setText("รายจ่ายรวม: " + money.format(expense));
-        balanceLabel.setText("คงเหลือ: " + money.format(balance));
-        incomeLabel.setForeground(incomeColor());
-        expenseLabel.setForeground(expenseColor());
-        balanceLabel.setForeground(balance >= 0 ? balanceColor() : expenseColor());
-        countLabel.setText("จำนวน: " + v.size() + " รายการ");
-
-        double monthExpense = Stats.monthTotal(transactions, YearMonth.now(), false);
-        if (budget > 0) {
-            int pct = (int) Math.round(monthExpense / budget * 100);
-            budgetBar.set(pct, money.format(monthExpense) + " / " + money.format(budget) + "  (" + pct + "%)", meterColor(pct));
-        } else {
-            budgetBar.set(0, "ยังไม่ได้ตั้งงบรวม", incomeColor());
-        }
-    }
-
-    private Color meterColor(int pct) {
-        return pct >= 100 ? expenseColor() : pct >= 80 ? warningColor() : incomeColor();
-    }
-
-    private void updateStats() {
-        List<Transaction> v = visible();
-        pieChart.setData(Stats.expenseByCategory(v));
-
-        List<String> labels = new ArrayList<>();
-        double[] inc = new double[6];
-        double[] exp = new double[6];
-        YearMonth now = YearMonth.now();
-        for (int i = 0; i < 6; i++) {
-            YearMonth ym = now.minusMonths(5 - i);
-            labels.add(ym.toString());
-            inc[i] = Stats.monthTotal(transactions, ym, true);
-            exp[i] = Stats.monthTotal(transactions, ym, false);
-        }
-        barChart.setData(labels, inc, exp);
-
-        catBudgetPanel.removeAll();
-        for (String cat : Transaction.EXPENSE_CATEGORIES) {
-            double limit = categoryBudgets.getOrDefault(cat, 0.0);
-            if (limit <= 0) continue;
-            double spent = Stats.monthCategoryExpense(transactions, now, cat);
-            int pct = (int) Math.round(spent / limit * 100);
-            Charts.MeterBar bar = new Charts.MeterBar();
-            bar.set(pct, cat + ": " + money0.format(spent) + " / " + money0.format(limit) + "  (" + pct + "%)", meterColor(pct));
-            catBudgetPanel.add(bar);
-        }
-        if (catBudgetPanel.getComponentCount() == 0) {
-            catBudgetPanel.add(new JLabel("ยังไม่ได้ตั้งงบตามหมวด (กดปุ่ม \"งบตามหมวด\" ด้านบน)"));
-        }
-        catBudgetPanel.revalidate();
-        catBudgetPanel.repaint();
-
-        double income = Stats.sum(v, true);
-        double expense = Stats.sum(v, false);
-        StringBuilder sb = new StringBuilder("<html><div style='padding:4px'>");
-        if (v.isEmpty()) {
-            sb.append("ยังไม่มีข้อมูล");
-        } else {
-            Transaction big = Stats.biggestExpense(v);
-            Map<String, Double> cats = Stats.expenseByCategory(v);
-            sb.append("• รายจ่ายเฉลี่ยต่อวัน: <b>").append(money.format(Stats.avgExpensePerDay(v))).append("</b> บาท<br>");
-            if (big != null) {
-                sb.append("• รายจ่ายสูงสุด: <b>").append(big.getName()).append("</b> ")
-                  .append(money.format(big.getAmount())).append(" บาท (").append(big.getDate().format(DATE_FMT)).append(")<br>");
-            }
-            if (!cats.isEmpty()) {
-                Map.Entry<String, Double> top = cats.entrySet().iterator().next();
-                sb.append("• หมวดที่ใช้จ่ายมากที่สุด: <b>").append(top.getKey()).append("</b> ")
-                  .append(money.format(top.getValue())).append(" บาท<br>");
-            }
-            if (income > 0) {
-                double rate = (income - expense) / income * 100;
-                sb.append("• อัตราการออม: <b>").append(String.format("%.1f", rate)).append("%</b> ของรายรับ");
-                if (rate < 0) sb.append(" (ใช้จ่ายมากกว่ารายรับ!)");
-            } else {
-                sb.append("• อัตราการออม: ยังไม่มีรายรับ");
-            }
-        }
-        sb.append("</div></html>");
-        insightLabel.setText(sb.toString());
-    }
-
-    private void showError(String msg) {
-        JOptionPane.showMessageDialog(this, msg, "ข้อมูลไม่ถูกต้อง", JOptionPane.ERROR_MESSAGE);
-    }
-
-    private void showInfo(String msg) {
-        JOptionPane.showMessageDialog(this, msg);
-    }
-
-    // =====================================================
-    //             ธีม (สว่าง/มืด) และจุดเริ่มต้นโปรแกรม
-    // =====================================================
-
-    /** เปลี่ยนธีมของทั้งโปรแกรม */
-    public static void applyTheme(boolean darkMode) {
-        dark = darkMode;
-        Charts.dark = darkMode; 
-        try {
-            UIManager.setLookAndFeel(new javax.swing.plaf.nimbus.NimbusLookAndFeel());
-            
-            // 1. บังคับเปลี่ยนฟอนต์ทุกชิ้นส่วนด้วยการวนลูปทับ 100%
-            FontUIResource myFont = new FontUIResource("Tahoma", Font.PLAIN, 14);
-            UIManager.put("defaultFont", myFont);
-            UIDefaults defaults = UIManager.getLookAndFeelDefaults();
-            defaults.put("defaultFont", myFont);
-            
-            // วนลูปตรวจสอบทุก Key ที่อยู่ในระบบ หากอันไหนเป็น Font ให้ทับด้วย myFont ทันที
-            for (Enumeration<Object> keys = defaults.keys(); keys.hasMoreElements();) {
-                Object key = keys.nextElement();
-                if (defaults.get(key) instanceof Font) {
-                    defaults.put(key, myFont);
-                }
-            }
-            for (Enumeration<Object> keys = UIManager.getDefaults().keys(); keys.hasMoreElements();) {
-                Object key = keys.nextElement();
-                if (UIManager.get(key) instanceof Font) {
-                    UIManager.put(key, myFont);
-                }
-            }
-            
-            // 2. ตั้งค่าชุดสีใหม่ให้เป็นสไตล์ Clean & Minimal
-            Color bgColor = darkMode ? new Color(30, 30, 30) : new Color(245, 245, 250); 
-            Color panelColor = darkMode ? new Color(45, 45, 45) : Color.WHITE; 
-            Color borderColor = darkMode ? new Color(70, 70, 70) : new Color(210, 215, 220); 
-            Color textColor = darkMode ? new Color(230, 230, 230) : new Color(40, 40, 40); 
-            Color selectBgColor = darkMode ? new Color(75, 110, 175) : new Color(108, 142, 231); 
-            
-            defaults.put("control", bgColor);
-            defaults.put("nimbusLightBackground", panelColor);
-            defaults.put("info", panelColor);
-            defaults.put("nimbusBase", borderColor);
-            defaults.put("text", textColor);
-            defaults.put("nimbusSelectionBackground", selectBgColor);
-            defaults.put("nimbusSelectedText", Color.WHITE);
-            defaults.put("nimbusFocus", selectBgColor);
-            
-        } catch (Exception ignored) { }
-        
-        for (Window w : Window.getWindows()) {
-            SwingUtilities.updateComponentTreeUI(w);
+            if (Filemanager.exportCsv(v, f)) JOptionPane.showMessageDialog(this, "ส่งออก " + v.size() + " รายการเรียบร้อย\n" + f.getAbsolutePath());
+            else JOptionPane.showMessageDialog(this, "ส่งออกไม่สำเร็จ", "ข้อผิดพลาด", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     public static void main(String[] args) {
-        applyTheme(Filemanager.loadDarkMode());
+        try {
+            UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+            
+            java.awt.Font myFont = new java.awt.Font("Tahoma", java.awt.Font.PLAIN, 14);
+            javax.swing.plaf.FontUIResource fontRes = new javax.swing.plaf.FontUIResource(myFont);
+            java.util.Enumeration<Object> keys = UIManager.getDefaults().keys();
+            while (keys.hasMoreElements()) {
+                Object key = keys.nextElement();
+                if (UIManager.get(key) instanceof javax.swing.plaf.FontUIResource || UIManager.get(key) instanceof java.awt.Font) {
+                    UIManager.put(key, fontRes);
+                }
+            }
+        } catch (Exception e) {}
+        
         SwingUtilities.invokeLater(() -> {
-            // ถ้าตั้งรหัสผ่านไว้ ต้องผ่านหน้าล็อกก่อนถึงจะเห็นข้อมูล
             if (PasswordManager.isPasswordSet() && !LockDialog.unlock(null)) {
                 System.exit(0);
             }
