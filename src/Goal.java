@@ -33,6 +33,11 @@ public class Goal {
     public double remaining()      { return Math.max(0, target - saved); }
     public int percent()           { return (int) Math.round(saved / target * 100); }
 
+    /** แก้ชื่อ/ยอดเป้าหมาย/กำหนด โดยคงยอดที่เก็บแล้วไว้ */
+    public Goal withDetails(String name, double target, LocalDate deadline) {
+        return new Goal(name, target, saved, deadline, created);
+    }
+
     public void deposit(double amount)  { saved += amount; }
 
     /** ถอนเงินออก (ไม่ให้ต่ำกว่า 0) */
