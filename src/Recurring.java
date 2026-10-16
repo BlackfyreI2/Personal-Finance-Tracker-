@@ -43,6 +43,11 @@ public class Recurring {
     public int getDay()              { return day; }
     public YearMonth getStartMonth() { return startMonth; }
 
+    /** แก้รายละเอียดโดยคงเดือนที่เพิ่มไปแล้วไว้ จะได้ไม่สร้างรายการซ้ำ */
+    public Recurring withDetails(String type, String category, String name, double amount, int day) {
+        return new Recurring(type, category, name, amount, day, startMonth, lastApplied);
+    }
+
     /**
      * สร้างรายการที่ "ถึงกำหนดแล้ว" ทั้งหมด (รวมเดือนที่ผ่านมาตอนไม่ได้เปิดโปรแกรมด้วย)
      * ถ้าวันที่เกินจำนวนวันของเดือน (เช่น 31 ในเดือน ก.พ.) จะใช้วันสุดท้ายของเดือนแทน
