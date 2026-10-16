@@ -79,6 +79,11 @@ public class Bill {
         return "ยังไม่ถึงกำหนด (อีก " + d + " วัน)";
     }
 
+    /** แก้รายละเอียดบิลโดยคงรอบที่จ่ายไปแล้วไว้ */
+    public Bill withDetails(String name, String category, double amount, int dueDay, int remindDays) {
+        return new Bill(name, category, amount, dueDay, remindDays, startMonth, lastPaid);
+    }
+
     /**
      * จ่ายบิลรอบนี้แล้ว: คืนรายจ่ายที่ต้องบันทึก และเลื่อนไปรอบถัดไป
      * (ยอดที่จ่ายจริงอาจไม่เท่ายอดปกติ เช่น ค่าไฟ จึงรับ paidAmount)
