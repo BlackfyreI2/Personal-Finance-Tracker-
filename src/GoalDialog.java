@@ -1,33 +1,33 @@
 package src;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 
 /**
- * GoalDialog = หน้าต่าง "เป้าหมายการออม" (สร้างเป้าหมาย / ฝากเงิน / ถอนเงิน / ลบ)
- *
- * แนวคิด: เงินในเป้าหมายคือการ "แบ่งส่วน" ของยอดคงเหลือที่มีอยู่ ไม่ใช่รายจ่าย
- * จึงไม่ไปแก้ประวัติรายรับ-รายจ่าย (ยอดคงเหลือรวมจึงไม่เพี้ยน และไม่นับซ้ำ)
+ * GoalDialog = หน้าต่าง "เป้าหมายการออม" (รองรับ Dark Theme สมบูรณ์ รวมถึงป๊อปอัปแก้ไข)
  */
 public class GoalDialog extends JDialog {
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final List<Goal> goals;
-    private final double totalBalance;      // ยอดคงเหลือรวมทั้งหมด (รายรับ - รายจ่าย)
+    private final double totalBalance;
     private final DecimalFormat money = new DecimalFormat("#,##0.00");
     private final DecimalFormat money0 = new DecimalFormat("#,##0");
+    private final DecimalFormat plain = new DecimalFormat("0.##");
 
     private final JTextField nameField = new JTextField(14);
     private final JTextField targetField = new JTextField(9);
-    private final JTextField deadlineField = new JTextField(9);
+    private final DatePicker deadlinePicker = new DatePicker(true);
     private final JLabel summary = new JLabel();
     private final DefaultTableModel model = new DefaultTableModel(
             new String[]{"เป้าหมาย", "เก็บแล้ว", "เป้าหมาย", "ความคืบหน้า", "เหลืออีก", "กำหนด", "ต้องออม/เดือน"}, 0) {
@@ -43,48 +43,71 @@ public class GoalDialog extends JDialog {
         super(owner, "เป้าหมายการออม", ModalityType.APPLICATION_MODAL);
         this.goals = goals;
         this.totalBalance = totalBalance;
+        deadlinePicker.setDate(null);
+        
+        getContentPane().setBackground(Ui.BG_DARK);
 
-        // --- ฟอร์มสร้างเป้าหมาย ---
-        JPanel form = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
-        form.setBorder(BorderFactory.createTitledBorder("สร้างเป้าหมายใหม่"));
-        form.add(new JLabel("ชื่อเป้าหมาย:"));    form.add(nameField);
-        form.add(new JLabel("ยอดเป้าหมาย:"));     form.add(targetField);
-        form.add(new JLabel("ภายในวันที่ (ปปปป-ดด-วว, เว้นว่างได้):")); form.add(deadlineField);
-        JButton addBtn = new JButton("เพิ่มเป้าหมาย");
+        JPanel formInner = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        formInner.setOpaque(false);
+        
+        JLabel lblName = new JLabel("ชื่อเป้าหมาย:"); lblName.setForeground(Ui.TEXT_LIGHT);
+        JLabel lblTarget = new JLabel("ยอดเป้าหมาย:"); lblTarget.setForeground(Ui.TEXT_LIGHT);
+        JLabel lblDate = new JLabel("ภายในวันที่:"); lblDate.setForeground(Ui.TEXT_LIGHT);
+
+        formInner.add(lblName); formInner.add(nameField);
+        formInner.add(lblTarget);  formInner.add(targetField);
+        formInner.add(lblDate);   formInner.add(deadlinePicker);
+        
+        JButton addBtn = Ui.primary("เพิ่มเป้าหมาย");
         addBtn.addActionListener(e -> onAdd());
-        form.add(addBtn);
+        formInner.add(addBtn);
+        JPanel form = Ui.titled("สร้างเป้าหมายใหม่", formInner);
 
-        // --- ตาราง ---
-        table.setRowHeight(30);
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        Ui.styleTable(table);
+        table.setRowHeight(32);
         table.getColumnModel().getColumn(3).setCellRenderer(new ProgressRenderer());
         table.getColumnModel().getColumn(3).setPreferredWidth(220);
         DefaultTableCellRenderer right = new DefaultTableCellRenderer();
         right.setHorizontalAlignment(SwingConstants.RIGHT);
         for (int c : new int[]{1, 2, 4, 6}) table.getColumnModel().getColumn(c).setCellRenderer(right);
+        table.addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) onEdit();
+            }
+        });
+        
         JScrollPane scroll = new JScrollPane(table);
-        scroll.setPreferredSize(new Dimension(900, 230));
+        scroll.setPreferredSize(new Dimension(920, 250));
+        scroll.getViewport().setBackground(Ui.BG_CARD);
+        scroll.setBorder(BorderFactory.createLineBorder(Ui.BORDER_COLOR));
 
-        summary.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+        summary.setBorder(new EmptyBorder(8, 12, 8, 12));
+        summary.setForeground(Ui.TEXT_LIGHT);
 
-        // --- ปุ่ม ---
-        JButton depositBtn = new JButton("ฝากเงิน");
-        JButton withdrawBtn = new JButton("ถอนเงิน");
-        JButton delBtn = new JButton("ลบเป้าหมาย");
-        JButton closeBtn = new JButton("ปิด");
+        JPanel center = new JPanel(new BorderLayout());
+        center.setBackground(Ui.BG_DARK);
+        center.setBorder(new EmptyBorder(0, 8, 0, 8));
+        center.add(summary, BorderLayout.NORTH);
+        center.add(scroll, BorderLayout.CENTER);
+
+        JButton editBtn = Ui.secondary("แก้ไข");
+        JButton depositBtn = Ui.primary("ฝากเงิน");
+        JButton withdrawBtn = Ui.primary("ถอนเงิน");
+        JButton delBtn = Ui.secondary("ลบเป้าหมาย");
+        JButton closeBtn = Ui.secondary("ปิด");
+        editBtn.addActionListener(e -> onEdit());
         depositBtn.addActionListener(e -> onMove(true));
         withdrawBtn.addActionListener(e -> onMove(false));
         delBtn.addActionListener(e -> onDelete());
         closeBtn.addActionListener(e -> dispose());
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        buttons.setBackground(Ui.BG_DARK);
+        buttons.add(editBtn);
         buttons.add(depositBtn);
         buttons.add(withdrawBtn);
         buttons.add(delBtn);
         buttons.add(closeBtn);
-
-        JPanel center = new JPanel(new BorderLayout());
-        center.add(summary, BorderLayout.NORTH);
-        center.add(scroll, BorderLayout.CENTER);
 
         setLayout(new BorderLayout(6, 6));
         add(form, BorderLayout.NORTH);
@@ -96,14 +119,13 @@ public class GoalDialog extends JDialog {
         setLocationRelativeTo(owner);
     }
 
-    /** วาดแถบความคืบหน้าในช่อง (ใช้ MeterBar ที่วาดเองใน Charts) */
     private class ProgressRenderer implements TableCellRenderer {
         private final Charts.MeterBar bar = new Charts.MeterBar();
         @Override
         public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
             Goal g = goals.get(row);
             int pct = g.percent();
-            bar.set(pct, pct + "%", g.isDone() ? new Color(46, 204, 113) : new Color(52, 152, 219));
+            bar.set(pct, pct + "%", g.isDone() ? new Color(46, 204, 113) : Ui.ACCENT_BLUE);
             return bar;
         }
     }
@@ -121,34 +143,30 @@ public class GoalDialog extends JDialog {
                     g, money.format(g.remaining()), deadline, monthly});
         }
         double free = totalBalance - allocated;
+        
         summary.setText("<html>ยอดคงเหลือรวม <b>" + money.format(totalBalance) + "</b> บาท &nbsp;|&nbsp; "
                 + "แบ่งไว้ในเป้าหมาย <b>" + money.format(allocated) + "</b> &nbsp;|&nbsp; "
-                + "ใช้ได้อิสระ <b>" + money.format(free) + "</b></html>");
+                + "ใช้ได้อิสระ <b>" + money.format(free) + "</b><br>"
+                + "<span style='color:#A0A0A5; font-size:10px;'>ดับเบิลคลิกแถวหรือกดแก้ไข เพื่อเปลี่ยนชื่อ ยอดเป้าหมาย หรือวันกำหนด</span></html>");
     }
 
     private void onAdd() {
         String name = nameField.getText().trim();
+        Double target = Ui.parseAmount(targetField.getText());
         if (name.isEmpty()) { error("กรุณากรอกชื่อเป้าหมาย"); return; }
-        double target;
-        try {
-            target = Double.parseDouble(targetField.getText().trim().replace(",", ""));
-        } catch (NumberFormatException e) { error("ยอดเป้าหมายต้องเป็นตัวเลข"); return; }
-        if (target <= 0) { error("ยอดเป้าหมายต้องมากกว่า 0"); return; }
+        if (target == null) { error("ยอดเป้าหมายต้องเป็นตัวเลขที่มากกว่า 0"); return; }
 
-        LocalDate deadline = null;
-        String dl = deadlineField.getText().trim();
-        if (!dl.isEmpty()) {
-            try {
-                deadline = LocalDate.parse(dl);
-            } catch (DateTimeParseException e) { error("รูปแบบวันที่ไม่ถูกต้อง เช่น 2026-12-31"); return; }
-            if (deadline.isBefore(LocalDate.now())) { error("วันที่ต้องไม่ใช่วันที่ผ่านมาแล้ว"); return; }
+        LocalDate deadline = deadlinePicker.getDate();
+        if (deadline != null && deadline.isBefore(LocalDate.now())) {
+            error("วันที่ต้องไม่ใช่วันที่ผ่านมาแล้ว");
+            return;
         }
 
         goals.add(new Goal(name, target, 0, deadline, LocalDate.now()));
         Filemanager.saveGoals(goals);
         nameField.setText("");
         targetField.setText("");
-        deadlineField.setText("");
+        deadlinePicker.setDate(null);
         reloadTable();
     }
 
@@ -157,7 +175,53 @@ public class GoalDialog extends JDialog {
         return row < 0 ? null : goals.get(row);
     }
 
-    /** ฝากเงิน (deposit=true) หรือถอนเงิน (deposit=false) */
+    private void onEdit() {
+        Goal g = selected();
+        if (g == null) { JOptionPane.showMessageDialog(this, "กรุณาเลือกเป้าหมายที่ต้องการแก้ไขก่อน"); return; }
+
+        JTextField name = new JTextField(g.getName(), 16);
+        name.setBackground(Ui.BG_DARK);
+        name.setForeground(Ui.TEXT_LIGHT);
+        name.setCaretColor(Color.WHITE);
+
+        JTextField target = new JTextField(plain.format(g.getTarget()), 10);
+        target.setBackground(Ui.BG_DARK);
+        target.setForeground(Ui.TEXT_LIGHT);
+        target.setCaretColor(Color.WHITE);
+
+        DatePicker deadline = new DatePicker(true);
+        deadline.setDate(g.getDeadline());
+
+        JLabel l1 = new JLabel("ชื่อเป้าหมาย:"); l1.setForeground(Ui.TEXT_LIGHT);
+        JLabel l2 = new JLabel("ยอดเป้าหมาย:"); l2.setForeground(Ui.TEXT_LIGHT);
+        JLabel l3 = new JLabel("ภายในวันที่:"); l3.setForeground(Ui.TEXT_LIGHT);
+
+        // สร้าง JPanel สำหรับฟอร์มแก้ไข และปรับพื้นหลังให้เป็น Dark Theme กลมกลืน
+        JPanel form = Ui.formGrid(3, l1, name, l2, target, l3, deadline);
+        form.setOpaque(true);
+        form.setBackground(Ui.BG_CARD);
+        form.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        // ปรับแต่งปุ่ม OK / Cancel ใน JOptionPane ให้เข้ากับธีมมืด
+        UIManager.put("OptionPane.background", Ui.BG_DARK);
+        UIManager.put("Panel.background", Ui.BG_DARK);
+        UIManager.put("OptionPane.messageForeground", Ui.TEXT_LIGHT);
+
+        int ok = JOptionPane.showConfirmDialog(this, form, "แก้ไขเป้าหมาย",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (ok != JOptionPane.OK_OPTION) return;
+
+        String n = name.getText().trim();
+        Double v = Ui.parseAmount(target.getText());
+        if (n.isEmpty()) { error("กรุณากรอกชื่อเป้าหมาย"); return; }
+        if (v == null) { error("ยอดเป้าหมายต้องเป็นตัวเลขที่มากกว่า 0"); return; }
+
+        int i = goals.indexOf(g);
+        goals.set(i, g.withDetails(n, v, deadline.getDate()));
+        Filemanager.saveGoals(goals);
+        reloadTable();
+    }
+
     private void onMove(boolean deposit) {
         Goal g = selected();
         if (g == null) { JOptionPane.showMessageDialog(this, "กรุณาเลือกเป้าหมายก่อน"); return; }
@@ -165,11 +229,8 @@ public class GoalDialog extends JDialog {
         String input = JOptionPane.showInputDialog(this,
                 (deposit ? "ฝากเข้า" : "ถอนจาก") + " \"" + g.getName() + "\" (บาท):");
         if (input == null) return;
-        double amount;
-        try {
-            amount = Double.parseDouble(input.trim().replace(",", ""));
-        } catch (NumberFormatException e) { error("จำนวนเงินต้องเป็นตัวเลข"); return; }
-        if (amount <= 0) { error("จำนวนเงินต้องมากกว่า 0"); return; }
+        Double amount = Ui.parseAmount(input);
+        if (amount == null) { error("จำนวนเงินต้องเป็นตัวเลขที่มากกว่า 0"); return; }
 
         if (deposit) {
             double allocated = 0;
