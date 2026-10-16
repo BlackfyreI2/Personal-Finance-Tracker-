@@ -26,14 +26,23 @@ public class SecurityDialog extends JDialog {
 
         status.setFont(status.getFont().deriveFont(Font.BOLD, 15f));
 
+        setBtn.setMargin(new Insets(6, 12, 6, 12));
+        changeBtn.setMargin(new Insets(6, 12, 6, 12));
+        removeBtn.setMargin(new Insets(6, 12, 6, 12));
+        saveIdleBtn.setMargin(new Insets(6, 12, 6, 12));
+
         JPanel pwPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-        pwPanel.setBorder(BorderFactory.createTitledBorder("รหัสผ่าน"));
+        pwPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder("รหัสผ่าน"),
+                BorderFactory.createEmptyBorder(4, 8, 8, 8)));
         pwPanel.add(setBtn);
         pwPanel.add(changeBtn);
         pwPanel.add(removeBtn);
 
         JPanel idlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-        idlePanel.setBorder(BorderFactory.createTitledBorder("ล็อกอัตโนมัติ"));
+        idlePanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder("ล็อกอัตโนมัติ"),
+                BorderFactory.createEmptyBorder(4, 8, 8, 8)));
         idlePanel.add(new JLabel("ล็อกเมื่อไม่ได้ใช้งานนาน (นาที, 0 = ปิด):"));
         idlePanel.add(idleBox);
         idlePanel.add(saveIdleBtn);
