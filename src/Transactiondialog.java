@@ -3,24 +3,22 @@ package src;
 import javax.swing.*;
 import java.awt.*;
 import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 
 /**
  * TransactionDialog = หน้าต่างป๊อปอัปสำหรับ "แก้ไขรายการ"
  */
 public class Transactiondialog extends JDialog {
-    private Transaction result = null;   // ถ้ากดยกเลิกจะเป็น null
+    private Transaction result = null;
 
     private final JComboBox<String> typeBox = new JComboBox<>(new String[]{Transaction.INCOME, Transaction.EXPENSE});
     private final JComboBox<String> catBox = new JComboBox<>();
     private final JTextField nameField = new JTextField(18);
     private final JTextField amountField = new JTextField(10);
-    private final JTextField dateField = new JTextField(10);
+    private final DatePicker datePicker = new DatePicker();
 
-    /** เปิดหน้าต่าง รอจนผู้ใช้ปิด แล้วคืนรายการที่แก้แล้ว (หรือ null ถ้ายกเลิก) */
     public static Transaction show(Window owner, Transaction t) {
         Transactiondialog d = new Transactiondialog(owner, t);
-        d.setVisible(true);   // เป็น modal: โค้ดจะหยุดรอตรงนี้จนหน้าต่างถูกปิด
+        d.setVisible(true);
         return d.result;
     }
 
@@ -33,21 +31,20 @@ public class Transactiondialog extends JDialog {
         typeBox.addActionListener(e -> fillCategories());
         nameField.setText(t.getName());
         amountField.setText(String.valueOf(t.getAmount()));
-        dateField.setText(t.getDate().toString());
+        datePicker.setDate(t.getDate());
 
-        JPanel form = new JPanel(new GridLayout(5, 2, 8, 8));
-        form.setBorder(BorderFactory.createEmptyBorder(12, 12, 6, 12));
-        form.add(new JLabel("ประเภท:"));              form.add(typeBox);
-        form.add(new JLabel("หมวดหมู่:"));            form.add(catBox);
-        form.add(new JLabel("ชื่อรายการ:"));          form.add(nameField);
-        form.add(new JLabel("จำนวนเงิน:"));           form.add(amountField);
-        form.add(new JLabel("วันที่ (ปปปป-ดด-วว):")); form.add(dateField);
+        JPanel form = Ui.formGrid(5,
+                new JLabel("ประเภท:"), typeBox,
+                new JLabel("หมวดหมู่:"), catBox,
+                new JLabel("ชื่อรายการ:"), nameField,
+                new JLabel("จำนวนเงิน:"), amountField,
+                new JLabel("วันที่:"), datePicker);
 
-        JButton ok = new JButton("บันทึก");
-        JButton cancel = new JButton("ยกเลิก");
+        JButton ok = Ui.primary("บันทึก");
+        JButton cancel = Ui.primary("ยกเลิก");
         ok.addActionListener(e -> onOk());
         cancel.addActionListener(e -> dispose());
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
         buttons.add(ok);
         buttons.add(cancel);
 
@@ -60,25 +57,20 @@ public class Transactiondialog extends JDialog {
     }
 
     private void fillCategories() {
+        Object keep = catBox.getSelectedItem();
         catBox.removeAllItems();
         boolean income = Transaction.INCOME.equals(typeBox.getSelectedItem());
         for (String c : income ? Transaction.INCOME_CATEGORIES : Transaction.EXPENSE_CATEGORIES) catBox.addItem(c);
+        if (keep != null) catBox.setSelectedItem(keep);
     }
 
     private void onOk() {
         String name = nameField.getText().trim();
         if (name.isEmpty()) { error("กรุณากรอกชื่อรายการ"); return; }
-
-        double amount;
-        try {
-            amount = Double.parseDouble(amountField.getText().trim().replace(",", ""));
-        } catch (NumberFormatException e) { error("จำนวนเงินต้องเป็นตัวเลข"); return; }
-        if (amount <= 0) { error("จำนวนเงินต้องมากกว่า 0"); return; }
-
-        LocalDate date;
-        try {
-            date = LocalDate.parse(dateField.getText().trim());
-        } catch (DateTimeParseException e) { error("รูปแบบวันที่ไม่ถูกต้อง เช่น 2026-10-02"); return; }
+        Double amount = Ui.parseAmount(amountField.getText());
+        if (amount == null) { error("จำนวนเงินต้องเป็นตัวเลขที่มากกว่า 0"); return; }
+        LocalDate date = datePicker.getDate();
+        if (date == null) { error("กรุณาเลือกวันที่"); return; }
 
         result = new Transaction((String) typeBox.getSelectedItem(), (String) catBox.getSelectedItem(), name, amount, date);
         dispose();
