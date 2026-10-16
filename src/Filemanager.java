@@ -10,15 +10,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * FileManager = จัดการอ่าน/เขียนไฟล์ทั้งหมด
- *   data.txt        = รายการรายรับ-รายจ่าย
- *   budget.txt      = งบรวมต่อเดือน
- *   budgets.txt     = งบแยกตามหมวดหมู่
- *   recurring.txt   = รายการประจำ
- *   settings.txt    = การตั้งค่า (ธีม)
- *   bills.txt       = บิลล่วงหน้า
- *   goals.txt       = เป้าหมายการออม
- *   security.txt    = รหัสผ่าน (hash) -- จัดการโดย PasswordManager
+ * FileManager = จัดการอ่าน/เขียนไฟล์ทั้งหมด[cite: 7]
+ *   data.txt        = รายการรายรับ-รายจ่าย[cite: 7]
+ *   budget.txt      = งบรวมต่อเดือน[cite: 7]
+ *   budgets.txt     = งบแยกตามหมวดหมู่[cite: 7]
+ *   recurring.txt   = รายการประจำ[cite: 7]
+ *   settings.txt    = การตั้งค่า (ธีม)[cite: 7]
+ *   bills.txt       = บิลล่วงหน้า[cite: 7]
+ *   goals.txt       = เป้าหมายการออม[cite: 7]
+ *   security.txt    = รหัสผ่าน (hash) -- จัดการโดย PasswordManager[cite: 7]
  */
 public class Filemanager {
     private static final Path DATA_FILE      = Paths.get("data.txt");
@@ -77,9 +77,32 @@ public class Filemanager {
     }
 
     public static void saveCategoryBudgets(Map<String, Double> map) {
+        if (map == null || map.isEmpty()) {
+            clearCategoryBudgets();
+            return;
+        }
         List<String> lines = new ArrayList<>();
-        for (Map.Entry<String, Double> e : map.entrySet()) lines.add(e.getKey() + "|" + e.getValue());
-        writeLines(CAT_BUDGETS, lines);
+        for (Map.Entry<String, Double> e : map.entrySet()) {
+            if (e.getValue() > 0) {
+                lines.add(e.getKey() + "|" + e.getValue());
+            }
+        }
+        if (lines.isEmpty()) {
+            clearCategoryBudgets();
+        } else {
+            writeLines(CAT_BUDGETS, lines);
+        }
+    }
+
+    /** ลบไฟล์ข้อมูลงบแยกหมวดหมู่ออกอย่างถาวร */
+    public static void clearCategoryBudgets() {
+        try {
+            if (Files.exists(CAT_BUDGETS)) {
+                Files.delete(CAT_BUDGETS);
+            }
+        } catch (IOException e) {
+            System.out.println("ลบไฟล์งบประมาณไม่สำเร็จ: " + e.getMessage());
+        }
     }
 
     // ---------- รายการประจำ ----------
@@ -174,10 +197,6 @@ public class Filemanager {
         public int invalid = 0;
     }
 
-    /**
-     * อ่านไฟล์ CSV รูปแบบ: วันที่,ประเภท,หมวดหมู่,ชื่อรายการ,จำนวนเงิน
-     * (รองรับ 4 คอลัมน์ที่ไม่มีหมวดหมู่, วันที่แบบ 2026-10-02 หรือ 2/10/2026 รวมถึงปี พ.ศ.)
-     */
     public static ImportResult importCsv(File file) throws IOException {
         ImportResult result = new ImportResult();
         List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
@@ -187,7 +206,6 @@ public class Filemanager {
             if (line.trim().isEmpty()) continue;
             List<String> cols = parseCsvLine(line);
 
-            // บรรทัดแรกที่คอลัมน์แรกไม่ใช่วันที่ = หัวตาราง ข้ามไป
             if (firstLine) {
                 firstLine = false;
                 if (parseDate(cols.get(0)) == null) continue;
@@ -227,22 +245,23 @@ public class Filemanager {
         return null;
     }
 
-    private static LocalDate parseDate(String s) {
+    public static LocalDate parseDate(String s) {
+        if (s == null) return null;
         s = s.trim();
+        if (s.isEmpty()) return null;
         try {
-            if (s.contains("/")) {                       // วัน/เดือน/ปี
+            if (s.contains("/")) {
                 String[] p = s.split("/");
                 int year = Integer.parseInt(p[2].trim());
-                if (year > 2400) year -= 543;            // แปลงปี พ.ศ. เป็น ค.ศ.
+                if (year > 2400) year -= 543;
                 return LocalDate.of(year, Integer.parseInt(p[1].trim()), Integer.parseInt(p[0].trim()));
             }
-            return LocalDate.parse(s);                   // ปปปป-ดด-วว
+            return LocalDate.parse(s);
         } catch (Exception e) {
             return null;
         }
     }
 
-    /** แยกบรรทัด CSV โดยรองรับข้อความในเครื่องหมายคำพูดที่มีคอมม่า */
     static List<String> parseCsvLine(String line) {
         List<String> out = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
