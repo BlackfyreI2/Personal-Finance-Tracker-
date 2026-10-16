@@ -1,0 +1,7 @@
+#security settings - do not edit
+#Thu Oct 15 22:36:23 GMT+07:00 2026
+autoLockMinutes=5
+hash=pjs4sGIbvMQoGJInOidxHoFMsZeb5lfzzb7WdDU9Nxs\=
+recHash=hArhKFgCyAyFoJ30+zUYTkJSo61mFe7bLssJucsqdr8\=
+recSalt=ffxivx0tNC8h90jAqq91tQ\=\=
+salt=eq0VQ+RdCmf/ikkdonn66g\=\=
