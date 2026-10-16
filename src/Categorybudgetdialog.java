@@ -1,7 +1,7 @@
 package src;
 
 import javax.swing.*;
-
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.text.DecimalFormat;
 import java.time.YearMonth;
@@ -9,12 +9,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-
+/**
+ * CategoryBudgetDialog = หน้าต่างตั้ง "งบรายเดือนแยกตามหมวดหมู่"
+ */
 public class Categorybudgetdialog extends JDialog {
-    private Map<String, Double> result = null;   // null = ยกเลิก
+    private Map<String, Double> result = null;
     private final Map<String, JTextField> fields = new LinkedHashMap<>();
 
-   
     public static Map<String, Double> show(Window owner, Map<String, Double> current, List<Transaction> all) {
         Categorybudgetdialog d = new Categorybudgetdialog(owner, current, all);
         d.setVisible(true);
@@ -26,11 +27,17 @@ public class Categorybudgetdialog extends JDialog {
         DecimalFormat money = new DecimalFormat("#,##0.00");
         YearMonth now = YearMonth.now();
 
-        JPanel grid = new JPanel(new GridLayout(Transaction.EXPENSE_CATEGORIES.size() + 1, 3, 10, 6));
-        grid.setBorder(BorderFactory.createEmptyBorder(12, 12, 6, 12));
-        grid.add(new JLabel("หมวดหมู่"));
-        grid.add(new JLabel("ใช้ไปเดือนนี้"));
-        grid.add(new JLabel("งบ (บาท, 0 = ไม่กำหนด)"));
+        JPanel grid = new JPanel(new GridLayout(Transaction.EXPENSE_CATEGORIES.size() + 1, 3, 12, 8));
+        grid.setBorder(new EmptyBorder(4, 4, 4, 4));
+        JLabel h1 = new JLabel("หมวดหมู่");
+        JLabel h2 = new JLabel("ใช้ไปเดือนนี้");
+        JLabel h3 = new JLabel("งบ (บาท, 0 = ไม่กำหนด)");
+        h1.setFont(h1.getFont().deriveFont(Font.BOLD));
+        h2.setFont(h2.getFont().deriveFont(Font.BOLD));
+        h3.setFont(h3.getFont().deriveFont(Font.BOLD));
+        grid.add(h1);
+        grid.add(h2);
+        grid.add(h3);
         for (String cat : Transaction.EXPENSE_CATEGORIES) {
             JTextField f = new JTextField(10);
             double limit = current.getOrDefault(cat, 0.0);
@@ -41,16 +48,21 @@ public class Categorybudgetdialog extends JDialog {
             grid.add(f);
         }
 
-        JButton ok = new JButton("บันทึก");
-        JButton cancel = new JButton("ยกเลิก");
+        JPanel body = new JPanel(new BorderLayout());
+        body.setBorder(new EmptyBorder(12, 16, 8, 16));
+        body.add(Ui.hint("แก้ตัวเลขในช่องขวาสุดแล้วกดบันทึก — ไม่ต้องลบแล้วเพิ่มใหม่"), BorderLayout.NORTH);
+        body.add(grid, BorderLayout.CENTER);
+
+        JButton ok = Ui.primary("บันทึก");
+        JButton cancel = Ui.primary("ยกเลิก");
         ok.addActionListener(e -> onOk());
         cancel.addActionListener(e -> dispose());
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
         buttons.add(ok);
         buttons.add(cancel);
 
         setLayout(new BorderLayout());
-        add(grid, BorderLayout.CENTER);
+        add(body, BorderLayout.CENTER);
         add(buttons, BorderLayout.SOUTH);
         getRootPane().setDefaultButton(ok);
         pack();
